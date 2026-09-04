@@ -15,6 +15,24 @@ export const Route = createRootRoute({
         content:
           "AquaDrop delivers 24–48 bottles of water to your door — no delivery fee, no service fee. Join the waiting list and stay stocked up without the heavy lifting.",
       },
+      { property: "og:title", content: "AquaDrop — Water Delivered to Your Door" },
+      {
+        property: "og:description",
+        content:
+          "24–48 bottles of water delivered to your door — no delivery or service fees. Join the waiting list.",
+      },
+      { property: "og:type", content: "website" },
+      {
+        property: "og:url",
+        content: "https://078d26410afcd223869d5e26de8b39bd.ctonew.app",
+      },
+      { property: "og:site_name", content: "AquaDrop" },
+      { name: "twitter:card", content: "summary" },
+      { name: "twitter:title", content: "AquaDrop — Water Delivered to Your Door" },
+      {
+        name: "twitter:description",
+        content: "24–48 bottles of water delivered to your door — no delivery or service fees.",
+      },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
