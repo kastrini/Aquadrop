@@ -18,8 +18,20 @@ type SignupInput = {
   postalCode: string;
   address: string;
   bottles: number;
+  brands?: string[]; // brand-preference labels (whitelisted server-side)
+  brandOther?: string; // free text for "International / other"
   note?: string;
 };
+
+/** Canonical brand labels a visitor can pick. */
+const BRAND_OPTIONS = [
+  "Zephyrhills",
+  "Dasani",
+  "Pure Life",
+  "Evian",
+  "Great Value",
+  "International / other",
+] as const;
 
 const submitSignup = createServerFn({ method: "POST" })
   .validator((d: SignupInput) => d)
@@ -30,6 +42,24 @@ const submitSignup = createServerFn({ method: "POST" })
     const address = data.address.trim();
     const note = (data.note ?? "").trim();
     const bottles = data.bottles;
+
+    // Brand preference (optional). Whitelist the selectable labels, never
+    // trust client input; keep the free-text "international" note short.
+    const brandOther = (data.brandOther ?? "").trim().slice(0, 100);
+    const picked = Array.isArray(data.brands)
+      ? data.brands.filter(
+          (b): b is (typeof BRAND_OPTIONS)[number] =>
+            typeof b === "string" &&
+            (BRAND_OPTIONS as readonly string[]).includes(b),
+        )
+      : [];
+    const brandLabels = picked.map((b) =>
+      b === "International / other" && brandOther
+        ? `International / other: ${brandOther}`
+        : b,
+    );
+    const brandsValue =
+      brandLabels.length > 0 ? brandLabels.join("; ").slice(0, 400) : null;
 
     // Server-side validation — never trust the client.
     if (!name || !contact || !postalCode || !address) {
@@ -56,12 +86,18 @@ const submitSignup = createServerFn({ method: "POST" })
           address TEXT NOT NULL,
           bottles INTEGER NOT NULL,
           note TEXT,
+          brands TEXT,
           created_at TIMESTAMPTZ NOT NULL DEFAULT now()
         )
       `;
+      // The table may predate the brands column (CREATE TABLE IF NOT EXISTS
+      // won't add it) — add it idempotently without dropping existing rows.
       await client`
-        INSERT INTO interest_signups (name, email_or_phone, postal_code, address, bottles, note)
-        VALUES (${name}, ${contact}, ${postalCode}, ${address}, ${bottles}, ${note || null})
+        ALTER TABLE interest_signups ADD COLUMN IF NOT EXISTS brands TEXT
+      `;
+      await client`
+        INSERT INTO interest_signups (name, email_or_phone, postal_code, address, bottles, note, brands)
+        VALUES (${name}, ${contact}, ${postalCode}, ${address}, ${bottles}, ${note || null}, ${brandsValue})
       `;
       return { ok: true };
     } catch (err) {
@@ -113,6 +149,8 @@ function Home() {
   const [address, setAddress] = useState("");
   const [bottlesChoice, setBottlesChoice] = useState<"24" | "36" | "48" | "other">("24");
   const [bottlesOther, setBottlesOther] = useState("");
+  const [brands, setBrands] = useState<string[]>([]);
+  const [brandOther, setBrandOther] = useState("");
   const [note, setNote] = useState("");
 
   const [state, setState] = useState<"idle" | "submitting" | "success" | "error">("idle");
@@ -138,6 +176,8 @@ function Home() {
           postalCode,
           address,
           bottles: Number.isFinite(bottles) ? bottles : 0,
+          brands,
+          brandOther,
           note,
         },
       });
@@ -510,6 +550,60 @@ function Home() {
                           aria-label="Number of bottles"
                         />
                       )}
+                    </div>
+                    <div className="sm:col-span-2">
+                      <fieldset>
+                        <legend className={labelClass}>
+                          Which brands would you like?{" "}
+                          <span className="font-normal text-slate-400">
+                            (pick any — optional)
+                          </span>
+                        </legend>
+                        <div className="mt-1 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                          {BRAND_OPTIONS.map((b) => (
+                            <label
+                              key={b}
+                              className={
+                                "flex cursor-pointer items-center gap-2.5 rounded-xl border px-3 py-2.5 text-sm font-medium transition " +
+                                (brands.includes(b)
+                                  ? "border-sky-600 bg-sky-50 text-sky-800 shadow-sm"
+                                  : "border-slate-300 bg-white text-slate-700 hover:border-sky-400")
+                              }
+                            >
+                              <input
+                                type="checkbox"
+                                name="brands"
+                                value={b}
+                                checked={brands.includes(b)}
+                                onChange={(e) =>
+                                  setBrands((prev) =>
+                                    e.target.checked
+                                      ? [...prev, b]
+                                      : prev.filter((x) => x !== b),
+                                  )
+                                }
+                                className="h-4 w-4 shrink-0 accent-sky-600"
+                              />
+                              {b === "International / other"
+                                ? "International / other (e.g. Greek water)"
+                                : b}
+                            </label>
+                          ))}
+                        </div>
+                        {brands.includes("International / other") && (
+                          <input
+                            id="brandOther"
+                            name="brandOther"
+                            type="text"
+                            maxLength={100}
+                            value={brandOther}
+                            onChange={(e) => setBrandOther(e.target.value)}
+                            placeholder="Which international brand? e.g. Ζαγορια, Avra"
+                            className={inputClass + " mt-2"}
+                            aria-label="Specific international brand"
+                          />
+                        )}
+                      </fieldset>
                     </div>
                     <div>
                       <label htmlFor="note" className={labelClass}>
